@@ -1,94 +1,12 @@
 from doctest import master
-import psycopg2
-from psycopg2 import sql
+from tkinter import ttk
 import customtkinter
 import tkinter
 from tkinter import messagebox
+from tabulate import tabulate
 
+from database import Database, CrudClientes
 
-class Database:
-    def __init__(self):
-        try:
-            self.conn = psycopg2.connect(
-                dbname="cmp1611-ativ2-Johnatan",
-                user="postgres",
-                password="salame123",
-                host="localhost",
-                port="5432"
-            )
-            self.cursor = self.conn.cursor()
-            print("Conexão com o banco estabelecida.")
-        except Exception as e:
-            print(f"Erro ao conectar ao banco: {e}")
-
-    def close(self):
-        self.cursor.close()
-        self.conn.close()
-
-    def execute_query(self, query, params=None):
-        try:
-            self.cursor.execute(query, params)
-            self.conn.commit()
-            return True
-        except Exception as e:
-            print(f"Erro na consulta: {e}")
-            self.conn.rollback()
-            return False
-
-    def fetch_all(self, query, params=None):
-        self.cursor.execute(query, params)
-        return self.cursor.fetchall()
-
-
-class CrudClientes:
-    def __init__(self, db: Database):
-        self.db = db
-
-    def create(self, nome, tipo, cpf=None, cnpj=None):
-        # Verificar se o cliente já existe
-        check_query = """
-        SELECT * FROM Clientes WHERE (cpf = %s AND cpf IS NOT NULL) OR (cnpj = %s AND cnpj IS NOT NULL);
-        """
-        if self.db.fetch_all(check_query, (cpf, cnpj)):
-            return "Erro: Cliente já existe no banco de dados."
-
-        query = """
-        INSERT INTO Clientes (nome, tipo, cpf, cnpj)
-        VALUES (%s, %s, %s, %s);
-        """
-        if self.db.execute_query(query, (nome, tipo, cpf, cnpj)):
-            return "Cliente incluído com sucesso."
-        return "Erro ao incluir cliente."
-
-    def read(self):
-        query = "SELECT * FROM Clientes;"
-        return self.db.fetch_all(query)
-
-    def update(self, id_cliente, nome=None, tipo=None, cpf=None, cnpj=None):
-        query = """
-        UPDATE Clientes
-        SET nome = COALESCE(%s, nome),
-            tipo = COALESCE(%s, tipo),
-            cpf = COALESCE(%s, cpf),
-            cnpj = COALESCE(%s, cnpj)
-        WHERE id = %s;
-        """
-        if self.db.execute_query(query, (nome, tipo, cpf, cnpj, id_cliente)):
-            return "Cliente atualizado com sucesso."
-        return "Erro: Cliente não encontrado para atualização."
-
-    def delete(self, id_cliente):
-        # Verificar se o cliente está referenciado
-        check_query = """
-        SELECT * FROM Fretes WHERE remetente_id = %s OR destinatario_id = %s;
-        """
-        if self.db.fetch_all(check_query, (id_cliente, id_cliente)):
-            return "Erro: Não é possível excluir cliente referenciado em um frete."
-
-        query = "DELETE FROM Clientes WHERE id = %s;"
-        if self.db.execute_query(query, (id_cliente,)):
-            return "Cliente excluído com sucesso."
-        return "Erro: Cliente não encontrado para exclusão."
 
 
 def centralizar_janela(janela, largura, altura):
@@ -106,6 +24,8 @@ class App:
     def __init__(self, root):
         self.root = root
         self.root.title("Sistema de Transportadora")
+        self.db = Database()
+        self.CrudClientes = CrudClientes(self.db)
         self.setup_ui()
 
     def setup_ui(self):
@@ -126,6 +46,77 @@ class App:
         self.setup_funcionarios_tab()
         self.setup_fretes_tab()
 
+    def cadastrar_cliente (self):
+        nome = self.nome_entry.get()
+        tipo = self.tipo_entry.get()
+        cpf = self.cpf_entry.get() if tipo == 'Pessoa Física' else None
+        cnpj = self.cnpj_entry.get() if tipo == 'Empresa' else None
+        endereco = self.endereco_entry.get()
+        telefone = self.telefone_entry.get()
+        representante = self.representante_entry.get() if tipo == 'Empresa' else None
+        telefone_representante = self.telefone_representante_entry.get() if tipo == 'Empresa' else None
+        inscricao_estadual = self.inscricao_estadual_entry.get() if tipo == 'Empresa' else None
+        resultado = self.CrudClientes.create(nome, tipo, cpf, cnpj, endereco, telefone, representante, telefone_representante, inscricao_estadual)
+        messagebox.showinfo("Resultado", resultado)
+
+    def atualizar_cliente(self):
+        id_cliente = self.CrudClientes.queryID(self.nome_entry.get())
+        nome = self.nome_entry.get()
+        tipo = self.tipo_entry.get()
+        cpf = self.cpf_entry.get() if tipo == 'Pessoa Física' else None
+        cnpj = self.cnpj_entry.get() if tipo == 'Empresa' else None
+        endereco = self.endereco_entry.get()
+        telefone = self.telefone_entry.get()
+        representante = self.representante_entry.get() if tipo == 'Empresa' else None
+        telefone_representante = self.telefone_representante_entry.get() if tipo == 'Empresa' else None
+        inscricao_estadual = self.inscricao_estadual_entry.get() if tipo == 'Empresa' else None
+
+        resultado = self.CrudClientes.update(id_cliente, nome, tipo, cpf, cnpj, endereco, telefone, representante, telefone_representante, inscricao_estadual)
+        messagebox.showinfo("Resultado", resultado)
+
+    def excluir_cliente(self):
+        id_cliente = self.CrudClientes.queryID(self.nome_entry.get())
+        resultado = self.CrudClientes.delete(id_cliente)
+        messagebox.showinfo("Resultado", resultado)
+
+    def limpar_campos(self):
+        self.nome_entry.delete(0, tkinter.END)
+        self.cpf_entry.delete(0, tkinter.END)
+        self.cnpj_entry.delete(0, tkinter.END)
+        self.endereco_entry.delete(0, tkinter.END)
+        self.telefone_entry.delete(0, tkinter.END)
+        self.representante_entry.delete(0, tkinter.END)
+        self.telefone_representante_entry.delete(0, tkinter.END)
+        self.inscricao_estadual_entry.delete(0, tkinter.END)
+        self.tipo_entry.set('')  # Reseta o OptionMenu
+
+    def setup_clientes_tab(self):
+        clientes_tab = self.tabview.tab("Clientes")
+        clientes_tab.grid_columnconfigure(0, weight=1)
+        clientes_tab.grid_rowconfigure(0, weight=1)
+        clientes_tab
+
+    def listar_clientes(self):
+        query = "SELECT nome, tipo, telefone FROM Clientes;"
+        try:
+            # Executar a consulta
+            resultados = self.db.fetch_all(query)
+
+            # Verificar se há dados
+            if not resultados:
+                print("Nenhum cliente encontrado.")
+                return
+            
+            # Converter resultados para tabela
+            headers = ["Nome", "Tipo", "Telefone"]
+            tabela = tabulate(resultados, headers=headers, tablefmt="grid")
+            
+            # Exibir tabela
+            messagebox.showinfo("Resultado", tabela)
+            print(tabela)
+        except Exception as e:
+            print(f"Erro ao listar clientes: {e}")
+
     def setup_clientes_tab(self):
         # Clientes
         clientes_tab = self.tabview.tab("Clientes")
@@ -136,21 +127,40 @@ class App:
         #Cadastro
         cadastro_frame = customtkinter.CTkFrame(clientes_tab)
         cadastro_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-        customtkinter.CTkLabel(cadastro_frame, text="Nome:").grid(row=0, column=0, padx=10, pady=5)
-        customtkinter.CTkEntry(cadastro_frame).grid(row=0, column=1, padx=10, pady=5)
-
-        customtkinter.CTkLabel(cadastro_frame, text="Tipo:").grid(row=1, column=0, padx=10, pady=5)
-        customtkinter.CTkEntry(cadastro_frame).grid(row=1, column=1, padx=10, pady=5)
-
-        customtkinter.CTkButton(cadastro_frame, text="Salvar Cliente",
-                                 command=lambda: self.salvar_dados("Cliente")).grid(
-            row=2, column=0, columnspan=2, pady=10
-        )
+        self.nome_entry = customtkinter.CTkEntry(cadastro_frame, placeholder_text="Nome")
+        self.nome_entry.grid(row=0, column=0, padx=10, pady=5)
+        self.cpf_entry = customtkinter.CTkEntry(cadastro_frame, placeholder_text="CPF")
+        self.cpf_entry.grid(row=1, column=0, padx=10, pady=5)
+        self.cnpj_entry = customtkinter.CTkEntry(cadastro_frame, placeholder_text="CNPJ")
+        self.cnpj_entry.grid(row=2, column=0, padx=10, pady=5)
+        self.endereco_entry = customtkinter.CTkEntry(cadastro_frame, placeholder_text="Endereço")
+        self.endereco_entry.grid(row=3, column=0, padx=10, pady=5)
+        self.telefone_entry = customtkinter.CTkEntry(cadastro_frame, placeholder_text="Telefone")
+        self.telefone_entry.grid(row=0, column=1, padx=10, pady=5)
+        self.representante_entry = customtkinter.CTkEntry(cadastro_frame, placeholder_text="Representante")
+        self.representante_entry.grid(row=1, column=1, padx=10, pady=5)
+        self.telefone_representante_entry = customtkinter.CTkEntry(cadastro_frame, placeholder_text="Telefone Representante")
+        self.telefone_representante_entry.grid(row=2, column=1, padx=10, pady=5)
+        self.inscricao_estadual_entry = customtkinter.CTkEntry(cadastro_frame, placeholder_text="Inscrição Estadual")
+        self.inscricao_estadual_entry.grid(row=3, column=1, padx=10, pady=5)
+        self.tipo_entry = customtkinter.CTkOptionMenu(cadastro_frame, fg_color="gray20", button_color="black", values=["Pessoa Física", "Empresa"])
+        self.tipo_entry.grid(row=4, column=0, padx=10, pady=5)
+        # Botões
+        botao_cadastrar = customtkinter.CTkButton(cadastro_frame, text="Cadastrar", command=self.cadastrar_cliente)
+        botao_cadastrar.grid(row=0, column=2, padx=10, pady=10)
+        botao_atualizar = customtkinter.CTkButton(cadastro_frame, text="Atualizar", command=self.atualizar_cliente)
+        botao_atualizar.grid(row=1, column=2, padx=10, pady=10)
+        botao_excluir = customtkinter.CTkButton(cadastro_frame, text="Excluir", command=self.excluir_cliente)
+        botao_excluir.grid(row=2, column=2, padx=10, pady=10)
+        botao_limpar = customtkinter.CTkButton(cadastro_frame, text="Limpar", command=self.limpar_campos)
+        botao_limpar.grid(row=3, column=2, padx=10, pady=10)
 
         #Consulta
         consulta_frame = customtkinter.CTkFrame(clientes_tab)
         consulta_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
         customtkinter.CTkLabel(consulta_frame, text="Consulta de Clientes", font=("Arial", 16)).pack(pady=10)
+        botao_listar = customtkinter.CTkButton(consulta_frame, text="Listar Clientes", command=self.listar_clientes)
+        botao_listar.pack(pady=10)
 
     def setup_funcionarios_tab(self):
         #Funcionários
