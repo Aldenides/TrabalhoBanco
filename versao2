@@ -1,0 +1,231 @@
+from doctest import master
+import psycopg2
+from psycopg2 import sql
+import customtkinter
+import tkinter
+from tkinter import messagebox
+
+
+class Database:
+    def __init__(self):
+        try:
+            self.conn = psycopg2.connect(
+                dbname="cmp1611-ativ2-Johnatan",
+                user="postgres",
+                password="salame123",
+                host="localhost",
+                port="5432"
+            )
+            self.cursor = self.conn.cursor()
+            print("Conexão com o banco estabelecida.")
+        except Exception as e:
+            print(f"Erro ao conectar ao banco: {e}")
+
+    def close(self):
+        self.cursor.close()
+        self.conn.close()
+
+    def execute_query(self, query, params=None):
+        try:
+            print(f"Executando query: {query}")
+            self.cursor.execute(query, params)
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"Erro na consulta: {e}")
+            self.conn.rollback()
+            return False
+
+    def fetch_all(self, query, params=None):
+        self.cursor.execute(query, params)
+        return self.cursor.fetchall()
+
+
+class CrudFuncionarios:
+    def __init__(self, db: Database):
+        self.db = db
+
+    def create(self, nome, cargo):
+        query = "INSERT INTO Funcionarios (nome, cargo) VALUES (%s, %s);"
+        if self.db.execute_query(query, (nome, cargo)):
+            return "Funcionário incluído com sucesso."
+        return "Erro ao incluir funcionário."
+
+    def read(self):
+        query = "SELECT * FROM Funcionarios;"
+        return self.db.fetch_all(query)
+
+    def update(self, id_funcionario, nome=None, cargo=None):
+        query = """
+        UPDATE Funcionarios
+        SET nome = COALESCE(%s, nome),
+            cargo = COALESCE(%s, cargo)
+        WHERE id = %s;
+        """
+        if self.db.execute_query(query, (nome, cargo, id_funcionario)):
+            return "Funcionário atualizado com sucesso."
+        return "Erro: Funcionário não encontrado para atualização."
+
+    def delete(self, id_funcionario):
+        query = "DELETE FROM Funcionarios WHERE id = %s;"
+        if self.db.execute_query(query, (id_funcionario,)):
+            return "Funcionário excluído com sucesso."
+        return "Erro: Funcionário não encontrado para exclusão."
+
+
+class CrudFretes:
+    def __init__(self, db: Database):
+        self.db = db
+
+    def create(self, numero, origem, destino, valor, peso, remetente_id, destinatario_id):
+        query = """
+        INSERT INTO Fretes (numero, origem, destino, valor, peso, remetente_id, destinatario_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s);
+        """
+        if self.db.execute_query(query, (numero, origem, destino, valor, peso, remetente_id, destinatario_id)):
+            return "Frete incluído com sucesso."
+        return "Erro ao incluir frete."
+
+    def read(self):
+        query = "SELECT * FROM Fretes;"
+        return self.db.fetch_all(query)
+
+    def delete(self, id_frete):
+        query = "DELETE FROM Fretes WHERE id = %s;"
+        if self.db.execute_query(query, (id_frete,)):
+            return "Frete excluído com sucesso."
+        return "Erro: Frete não encontrado para exclusão."
+
+
+class App:
+    def __init__(self, root):
+        self.db = Database()
+        self.funcionarios_crud = CrudFuncionarios(self.db)
+        self.fretes_crud = CrudFretes(self.db)
+        self.root = root
+        self.root.title("Sistema de Transportadora")
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.tabview = customtkinter.CTkTabview(self.root, width=1000, height=600)
+        self.tabview.pack(padx=20, pady=20, fill="both", expand=True)
+
+        self.tabview.add("Clientes")
+        self.tabview.add("Funcionários")
+        self.tabview.add("Fretes")
+
+        self.tabview._segmented_button.grid(sticky="ew")
+
+        self.setup_clientes_tab()
+        self.setup_funcionarios_tab()
+        self.setup_fretes_tab()
+
+    def setup_clientes_tab(self):
+        # Implementação para a aba de clientes (mesmo código anterior)
+        pass
+
+    def setup_funcionarios_tab(self):
+        funcionarios_tab = self.tabview.tab("Funcionários")
+        funcionarios_tab.grid_columnconfigure(0, weight=1)
+        funcionarios_tab.grid_rowconfigure(0, weight=1)
+        funcionarios_tab.grid_rowconfigure(1, weight=3)
+
+        # Cadastro
+        cadastro_frame = customtkinter.CTkFrame(funcionarios_tab)
+        cadastro_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+
+        customtkinter.CTkLabel(cadastro_frame, text="Nome:").grid(row=0, column=0, padx=10, pady=5)
+        self.nome_funcionario_entry = customtkinter.CTkEntry(cadastro_frame)
+        self.nome_funcionario_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        customtkinter.CTkLabel(cadastro_frame, text="Cargo:").grid(row=1, column=0, padx=10, pady=5)
+        self.cargo_funcionario_entry = customtkinter.CTkEntry(cadastro_frame)
+        self.cargo_funcionario_entry.grid(row=1, column=1, padx=10, pady=5)
+
+        customtkinter.CTkButton(
+            cadastro_frame,
+            text="Salvar Funcionário",
+            command=self.salvar_funcionario
+        ).grid(row=2, column=0, columnspan=2, pady=10)
+
+        # Consulta
+        consulta_frame = customtkinter.CTkFrame(funcionarios_tab)
+        consulta_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+
+        customtkinter.CTkLabel(consulta_frame, text="Consulta de Funcionários", font=("Arial", 16)).pack(pady=10)
+
+        self.lista_funcionarios = tkinter.Listbox(consulta_frame)
+        self.lista_funcionarios.pack(fill="both", expand=True)
+        self.atualizar_lista_funcionarios()
+
+    def salvar_funcionario(self):
+        nome = self.nome_funcionario_entry.get()
+        cargo = self.cargo_funcionario_entry.get()
+
+        mensagem = self.funcionarios_crud.create(nome, cargo)
+        messagebox.showinfo("Resultado", mensagem)
+        self.atualizar_lista_funcionarios()
+
+    def atualizar_lista_funcionarios(self):
+        self.lista_funcionarios.delete(0, tkinter.END)
+        funcionarios = self.funcionarios_crud.read()
+        for funcionario in funcionarios:
+            self.lista_funcionarios.insert(tkinter.END, funcionario)
+
+    def setup_fretes_tab(self):
+        fretes_tab = self.tabview.tab("Fretes")
+        fretes_tab.grid_columnconfigure(0, weight=1)
+        fretes_tab.grid_rowconfigure(0, weight=1)
+        fretes_tab.grid_rowconfigure(1, weight=3)
+
+        cadastro_frame = customtkinter.CTkFrame(fretes_tab)
+        cadastro_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+
+        customtkinter.CTkLabel(cadastro_frame, text="Número do Frete:").grid(row=0, column=0, padx=10, pady=5)
+        self.numero_frete_entry = customtkinter.CTkEntry(cadastro_frame)
+        self.numero_frete_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        customtkinter.CTkLabel(cadastro_frame, text="Origem:").grid(row=1, column=0, padx=10, pady=5)
+        self.origem_entry = customtkinter.CTkEntry(cadastro_frame)
+        self.origem_entry.grid(row=1, column=1, padx=10, pady=5)
+
+        customtkinter.CTkLabel(cadastro_frame, text="Destino:").grid(row=2, column=0, padx=10, pady=5)
+        self.destino_entry = customtkinter.CTkEntry(cadastro_frame)
+        self.destino_entry.grid(row=2, column=1, padx=10, pady=5)
+
+        customtkinter.CTkButton(
+            cadastro_frame,
+            text="Salvar Frete",
+            command=self.salvar_frete
+        ).grid(row=3, column=0, columnspan=2, pady=10)
+
+        consulta_frame = customtkinter.CTkFrame(fretes_tab)
+        consulta_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+
+        customtkinter.CTkLabel(consulta_frame, text="Consulta de Fretes", font=("Arial", 16)).pack(pady=10)
+
+        self.lista_fretes = tkinter.Listbox(consulta_frame)
+        self.lista_fretes.pack(fill="both", expand=True)
+        self.atualizar_lista_fretes()
+
+    def salvar_frete(self):
+        numero = self.numero_frete_entry.get()
+        origem = self.origem_entry.get()
+        destino = self.destino_entry.get()
+
+        mensagem = self.fretes_crud.create(numero, origem, destino, 100.0, 50.0, 1, 2)  # Ajustar com IDs reais
+        messagebox.showinfo("Resultado", mensagem)
+        self.atualizar_lista_fretes()
+
+    def atualizar_lista_fretes(self):
+        self.lista_fretes.delete(0, tkinter.END)
+        fretes = self.fretes_crud.read()
+        for frete in fretes:
+            self.lista_fretes.insert(tkinter.END, frete)
+
+
+if __name__ == "__main__":
+    root = customtkinter.CTk()
+    root.geometry("1000x700")
+    app = App(root)
+    root.mainloop()
